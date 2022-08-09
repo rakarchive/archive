@@ -30,11 +30,11 @@ func Zip(src string, dst io.Writer) error {
 			return err
 		}
 
-		return addFile(writer, path, info)
+		return addFile(writer, src, path, info)
 	})
 }
 
-func addFile(writer *zip.Writer, path string, info fs.FileInfo) error {
+func addFile(writer *zip.Writer, src, path string, info fs.FileInfo) error {
 	if info.IsDir() {
 		return nil
 	}
@@ -50,7 +50,9 @@ func addFile(writer *zip.Writer, path string, info fs.FileInfo) error {
 		return err
 	}
 
-	header.Name = path
+	if header.Name, err = filepath.Rel(filepath.Dir(src), path); err != nil {
+		return err
+	}
 	header.Method = zip.Deflate
 
 	headerWriter, err := writer.CreateHeader(header)

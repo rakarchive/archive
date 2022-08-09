@@ -41,7 +41,7 @@ func mainF() error {
 		return err
 	}
 
-	fmt.Print("Enter a password for the archive: ")
+	fmt.Print("Enter the password for the archive: ")
 	pass, err := term.ReadPassword(int(syscall.Stdin))
 	fmt.Print("\n\n")
 	if err != nil {

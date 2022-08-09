@@ -22,7 +22,9 @@ import (
 )
 
 // NewUnlocker creates a new *unlocker with the given source and key.
-func NewUnlocker(src io.Reader, key []byte) (*unlocker, error) {
+func NewUnlocker(src io.ReadCloser, key []byte) (*unlocker, error) {
+	defer src.Close()
+
 	var u unlocker
 	u.src = src
 
