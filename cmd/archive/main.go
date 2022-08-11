@@ -49,7 +49,6 @@ func mainF() error {
 	if err != nil {
 		return err
 	}
-	key := crypto.DeriveKey(pass)
 
 	w, err := os.Create(dst)
 	if err != nil {
@@ -57,9 +56,9 @@ func mainF() error {
 	}
 	defer w.Close()
 
-	l, err := crypto.NewLocker(w, key)
-	if err != nil {
-		return err
+	l := &crypto.Locker{
+		Password:    pass,
+		Destination: w,
 	}
 
 	fmt.Print("zipping files... ")

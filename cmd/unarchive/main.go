@@ -47,16 +47,18 @@ func mainF() error {
 	if err != nil {
 		return err
 	}
-	key := crypto.DeriveKey(pass)
 
-	w, err := os.Open(archive)
+	r, err := os.Open(archive)
 	if err != nil {
 		return err
 	}
 
 	fmt.Print("decrypting files... ")
-	u, err := crypto.NewUnlocker(w, key)
-	if err != nil {
+	u := &crypto.Unlocker{
+		Password: pass,
+		Source:   r,
+	}
+	if err = u.Unlock(); err != nil {
 		return err
 	}
 	fmt.Println("done.")

@@ -20,45 +20,55 @@ import (
 	"io"
 )
 
-// NewLocker creates a new *locker with the given key and destination.
-func NewLocker(dst io.Writer, key []byte) (*locker, error) {
-	var l locker
-	l.dst = dst
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	l.aead, err = cipher.NewGCM(block)
-	return &l, err
-}
-
-// locker implements an io.Writer which encrypts the incoming data with the
+// Locker implements an io.Writer which encrypts the incoming data with the
 // given key and writes it to the provided io.Writer.
-type locker struct {
-	dst io.Writer
+type Locker struct {
+	Password    []byte
+	Destination io.Writer
 
-	src  []byte
-	aead cipher.AEAD
+	data []byte
 }
 
-func (l *locker) Write(b []byte) (int, error) {
-	l.src = append(l.src, b...)
+func (l *Locker) Write(b []byte) (int, error) {
+	l.data = append(l.data, b...)
 	return len(b), nil
 }
 
 // Close signals that all the data that needs to be encrypted has been
 // provided to the locker. It encrypts the collected data and writes it
 // to the destination.
-func (l *locker) Close() error {
-	nonce := make([]byte, l.aead.NonceSize())
-	_, err := rand.Read(nonce)
+func (l *Locker) Close() error {
+	salt, err := randBytes(8)
 	if err != nil {
 		return err
 	}
 
-	enc := l.aead.Seal(nonce, nonce, l.src, nil)
-	_, err = l.dst.Write(enc)
+	key := DeriveKey(l.Password, salt)
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return err
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+
+	nonce, err := randBytes(aead.NonceSize())
+	if err != nil {
+		return err
+	}
+
+	data := append(salt, nonce...)
+	enc := aead.Seal(data, nonce, l.data, nil)
+
+	_, err = l.Destination.Write(enc)
 	return err
+}
+
+func randBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	return b, err
 }

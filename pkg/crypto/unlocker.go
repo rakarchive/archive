@@ -17,53 +17,54 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"errors"
 	"io"
 )
 
-// NewUnlocker creates a new *unlocker with the given source and key.
-func NewUnlocker(src io.ReadCloser, key []byte) (*unlocker, error) {
-	defer src.Close()
+// Unlocker implements an io.ReaderAt which decrypts the data provided to
+// it using the given key and returns the cleartext on Read calls.
+type Unlocker struct {
+	Password []byte
+	Source   io.ReadCloser
 
-	var u unlocker
-	u.src = src
+	io.ReaderAt
+
+	Size int64
+}
+
+func (u *Unlocker) Unlock() error {
+	defer u.Source.Close()
+
+	salt := make([]byte, 8)
+	if _, err := u.Source.Read(salt); err != nil {
+		return err
+	}
+
+	key := DeriveKey(u.Password, salt)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	u.aead, err = cipher.NewGCM(block)
+	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	ct, err := io.ReadAll(u.src)
+	nonce := make([]byte, aead.NonceSize())
+	if _, err = u.Source.Read(nonce); err != nil {
+		return err
+	}
+
+	ct, err := io.ReadAll(u.Source)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	nonceSize := u.aead.NonceSize()
-	if len(ct) < nonceSize {
-		return nil, errors.New("unlocker: nonce not found")
-	}
-
-	nonce, ct := ct[:nonceSize], ct[nonceSize:]
-	clt, err := u.aead.Open(nil, nonce, ct, nil)
+	clt, err := aead.Open(nil, nonce, ct, nil)
 
 	u.Size = int64(len(clt))
 	u.ReaderAt = bytes.NewReader(clt)
 
-	return &u, err
-}
-
-// unlocker implements an io.ReaderAt which decrypts the data provided to
-// it using the given key and returns the cleartext on Read calls.
-type unlocker struct {
-	io.ReaderAt
-	src io.Reader
-
-	Size int64
-
-	aead cipher.AEAD
+	return err
 }

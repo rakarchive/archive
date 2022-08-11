@@ -21,10 +21,9 @@ import (
 
 // DeriveKey derives a 32 byte key from the given password, using 4096
 // iterations of the pbkdf2 algorithm with sha256.
-func DeriveKey(pass []byte) []byte {
-	iter := 4096     // no of pbkdf2 iterations
-	klen := 32       // length of key in bytes
-	salt := []byte{} // no salt
+func DeriveKey(pass, salt []byte) []byte {
+	iter := 4096 // no of pbkdf2 iterations
+	klen := 32   // length of key in bytes
 
 	algo := sha256.New // hash algorithm for pbkdf
 
