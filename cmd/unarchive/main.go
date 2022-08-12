@@ -75,6 +75,6 @@ func mainF() error {
 	}
 	fmt.Print("done.\n\n")
 
-	fmt.Printf("Successfully unarchived '%s'.", filepath.Base(archive))
+	fmt.Printf("Successfully unarchived '%s'.\n", filepath.Base(archive))
 	return nil
 }
