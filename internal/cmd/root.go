@@ -14,6 +14,11 @@ func Root() *cobra.Command {
 	// global flags
 	cmd.PersistentFlags().BoolP("help", "h", false, "show help for command")
 
+	// set custom help
+	hc := helpCmd()
+	cmd.SetHelpCommand(hc)
+	cmd.SetHelpFunc(hc.Run)
+
 	// add commands
 	cmd.AddCommand(sealCmd())
 	cmd.AddCommand(openCmd())
