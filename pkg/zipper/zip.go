@@ -25,8 +25,17 @@ func Zip(src string, dst io.Writer) error {
 	writer := zip.NewWriter(dst)
 	defer writer.Close()
 
+	src, err := filepath.Abs(src)
+	if err != nil {
+		return err
+	}
+
 	return filepath.Walk(src, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
+			return err
+		}
+
+		if path, err = filepath.Rel(filepath.Dir(src), path); err != nil {
 			return err
 		}
 
@@ -50,9 +59,7 @@ func addFile(writer *zip.Writer, src, path string, info fs.FileInfo) error {
 		return err
 	}
 
-	if header.Name, err = filepath.Rel(filepath.Dir(src), path); err != nil {
-		return err
-	}
+	header.Name = path
 	header.Method = zip.Deflate
 
 	headerWriter, err := writer.CreateHeader(header)
