@@ -1,15 +1,14 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
-	"laptudirm.com/x/archive/pkg/crypto"
-	"laptudirm.com/x/archive/pkg/zipper"
+	"laptudirm.com/x/archive/pkg/archive"
 )
 
 func sealCmd() *cobra.Command {
@@ -22,48 +21,37 @@ func sealCmd() *cobra.Command {
 }
 
 func seal(cmd *cobra.Command, args []string) error {
-	dir, err := filepath.Abs(args[0])
+	dir := args[0]
+
+	if !archive.IsDirectory(dir) {
+		return fmt.Errorf("seal: '%s' is not a directory", dir)
+	}
+
+	fmt.Print("Enter a password for the archive: ")
+	pass1, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println()
 	if err != nil {
 		return err
 	}
-	dst := filepath.Base(dir) + ".march"
 
-	fmt.Print("Enter a password for the archive: ")
-	pass, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Print("Confirm the password for the archive:")
+	pass2, err := term.ReadPassword(int(syscall.Stdin))
 	fmt.Print("\n\n")
 	if err != nil {
 		return err
 	}
 
-	w, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer w.Close()
-
-	l := &crypto.Locker{
-		Password:    pass,
-		Destination: w,
+	if string(pass1) != string(pass2) {
+		return errors.New("seal: passwords do not match")
 	}
 
-	fmt.Print("zipping files... ")
-	if err = zipper.Zip(dir, l); err != nil {
-		return err
-	}
-	fmt.Println("done.")
+	a := &archive.Archive{
+		Name: filepath.Base(dir),
 
-	fmt.Print("encrypting archive... ")
-	if err := l.Close(); err != nil {
-		return err
-	}
-	fmt.Println("done.")
+		Pass: pass1,
 
-	fmt.Print("removing old files... ")
-	if err = os.RemoveAll(dir); err != nil {
-		return err
+		SrcDirectory: dir,
+		ArcDirectory: filepath.Dir(dir),
 	}
-	fmt.Println("done.")
-
-	fmt.Println("\nSuccessfully created archive.")
-	return nil
+	return a.Create()
 }
