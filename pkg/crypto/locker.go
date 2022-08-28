@@ -14,59 +14,72 @@
 package crypto
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
+	"hash"
 	"io"
+
+	"golang.org/x/crypto/chacha20"
 )
 
-// Locker implements an io.Writer which encrypts the incoming data with the
-// given key and writes it to the provided io.Writer.
+// Locker implements an AE which encrypts the incoming data with the given
+// key using Xchacha20 along with a MAC and writes it to the provided
+// io.Writer. The written data can be unencrypted and authenticated easily.
 type Locker struct {
+	// user inputs
 	Password    []byte
 	Destination io.Writer
 
-	data []byte
+	// locker state
+	hash   hash.Hash
+	cipher *chacha20.Cipher
+	closed bool
 }
 
+// Write allows locker to adhere to the io.Writer interface. The provided
+// slice is encrypted with Xchacha20 and written to the destination.
 func (l *Locker) Write(b []byte) (int, error) {
-	l.data = append(l.data, b...)
-	return len(b), nil
+	// (*Locker).Close has already been called
+	if l.closed {
+		panic("(*Locker).Write(): locker is closed")
+	}
+
+	// first call to write, initialize cipher
+	if l.cipher == nil {
+		// generate salt and nonce
+		rand, err := randBytes(randLen)
+		if err != nil {
+			return 0, err
+		}
+
+		// write the salt and nonce to the destination
+		if n, err := l.Destination.Write(rand); err != nil {
+			return n, err
+		}
+
+		salt := rand[:saltLen] // extract salt from bytes
+		key := DeriveKey(l.Password, salt)
+
+		nonce := rand[saltLen:] // extract nonce from bytes
+		l.cipher, _ = chacha20.NewUnauthenticatedCipher(key, nonce)
+
+		l.hash = sha256.New()
+	}
+
+	l.hash.Write(b)               // update hash value
+	l.cipher.XORKeyStream(b, b)   // encrypt the data
+	return l.Destination.Write(b) // write ciphertext
 }
 
 // Close signals that all the data that needs to be encrypted has been
-// provided to the locker. It encrypts the collected data and writes it
-// to the destination.
+// provided to the locker. The locker writes the MAC to the destination.
 func (l *Locker) Close() error {
-	salt, err := randBytes(8)
-	if err != nil {
-		return err
-	}
-
-	key := DeriveKey(l.Password, salt)
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return err
-	}
-
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return err
-	}
-
-	nonce, err := randBytes(aead.NonceSize())
-	if err != nil {
-		return err
-	}
-
-	data := append(salt, nonce...)
-	enc := aead.Seal(data, nonce, l.data, nil)
-
-	_, err = l.Destination.Write(enc)
+	_, err := l.Write(l.hash.Sum(nil))
+	l.closed = true // panic on write calls
 	return err
 }
 
+// randBytes generates n cryptographically secure random bytes.
 func randBytes(n int) ([]byte, error) {
 	b := make([]byte, n)
 	_, err := rand.Read(b)

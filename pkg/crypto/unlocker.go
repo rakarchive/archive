@@ -15,56 +15,93 @@ package crypto
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
+	"crypto/sha256"
+	"errors"
+	"hash"
 	"io"
+
+	"golang.org/x/crypto/chacha20"
 )
 
-// Unlocker implements an io.ReaderAt which decrypts the data provided to
-// it using the given key and returns the cleartext on Read calls.
+// ErrAuth represents the error returned by (*Unlocker).Close if the
+// verification of the message's authenticity fails.
+var ErrAuth = errors.New("unlocker: message authentication failed")
+
+// Unlocker implements an AE which decrypts and authenticates the
+// provided data, and writes it to the given destination.
 type Unlocker struct {
-	Password []byte
-	Source   io.ReadCloser
+	// user input
+	Password    []byte
+	Destination io.Writer
 
-	io.ReaderAt
+	rand []byte
 
-	Size int64
+	// unlocker state
+	hash    hash.Hash
+	cipher  *chacha20.Cipher
+	closed  bool
+	final32 []byte
 }
 
-func (u *Unlocker) Unlock() error {
-	defer u.Source.Close()
-
-	salt := make([]byte, 8)
-	if _, err := u.Source.Read(salt); err != nil {
-		return err
+// Write decrypts the given data and writes it to the destination.
+func (u *Unlocker) Write(b []byte) (int, error) {
+	// (*Unlocker).Close has already been called
+	if u.closed {
+		panic("(*Unlocker).Write(): unlocker is closed")
 	}
 
-	key := DeriveKey(u.Password, salt)
+	// if all the random bytes(salt and nonce) have not been received,
+	// keep collecting them
+	if i := randLen - len(u.rand); i > 0 {
+		var rand []byte
 
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return err
+		if i >= len(b) {
+			// collect all
+			rand = b
+			b = []byte{}
+		} else {
+			// collect some
+			rand = b[:i]
+			b = b[i:]
+		}
+
+		u.rand = append(u.rand, rand...)
 	}
 
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return err
+	// first call to write, initialize cipher
+	if u.cipher == nil {
+		// extract salt
+		salt := u.rand[:saltLen]
+		key := DeriveKey(u.Password, salt)
+
+		// extract nonce
+		nonce := u.rand[saltLen:]
+		u.cipher, _ = chacha20.NewUnauthenticatedCipher(key, nonce)
+
+		u.final32 = make([]byte, sha256.Size)
+		u.hash = sha256.New()
 	}
 
-	nonce := make([]byte, aead.NonceSize())
-	if _, err = u.Source.Read(nonce); err != nil {
-		return err
+	// keep track of last 32 bytes
+	buffer := append(u.final32, b...)
+	i := len(buffer) - sha256.Size
+	u.final32 = buffer[i:]
+	b = buffer[:i]
+
+	u.cipher.XORKeyStream(b, b)   // decrypt data
+	u.hash.Write(b)               // update hash
+	return u.Destination.Write(b) // write to destination
+}
+
+// Close authenticates the decrypted message. It returns ErrAuth if the
+// authentication fails due to any reason.
+func (u *Unlocker) Close() error {
+	// decrypt hash
+	u.cipher.XORKeyStream(u.final32, u.final32)
+
+	// verify hash
+	if !bytes.Equal(u.hash.Sum(nil), u.final32) {
+		return ErrAuth
 	}
-
-	ct, err := io.ReadAll(u.Source)
-	if err != nil {
-		return err
-	}
-
-	clt, err := aead.Open(nil, nonce, ct, nil)
-
-	u.Size = int64(len(clt))
-	u.ReaderAt = bytes.NewReader(clt)
-
-	return err
+	return nil
 }
