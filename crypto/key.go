@@ -19,6 +19,12 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
+const (
+	saltLen  = 8
+	nonceLen = 24
+	randLen  = saltLen + nonceLen
+)
+
 // DeriveKey derives a 32 byte key from the given password, using 4096
 // iterations of the pbkdf2 algorithm with sha256.
 func DeriveKey(pass, salt []byte) []byte {

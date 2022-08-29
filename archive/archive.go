@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"laptudirm.com/x/archive/pkg/crypto"
-	"laptudirm.com/x/archive/pkg/zipper"
+	"laptudirm.com/x/archive/crypto"
+	"laptudirm.com/x/archive/zipper"
 )
 
 const Ext = ".march"
