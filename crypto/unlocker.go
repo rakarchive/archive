@@ -14,7 +14,7 @@
 package crypto
 
 import (
-	"bytes"
+	"crypto/hmac"
 	"crypto/sha256"
 	"errors"
 	"hash"
@@ -79,7 +79,7 @@ func (u *Unlocker) Write(b []byte) (int, error) {
 		u.cipher, _ = chacha20.NewUnauthenticatedCipher(key, nonce)
 
 		u.final32 = make([]byte, sha256.Size)
-		u.hash = sha256.New()
+		u.hash = hmac.New(sha256.New, key)
 	}
 
 	// keep track of last 32 bytes
@@ -100,7 +100,7 @@ func (u *Unlocker) Close() error {
 	u.cipher.XORKeyStream(u.final32, u.final32)
 
 	// verify hash
-	if !bytes.Equal(u.hash.Sum(nil), u.final32) {
+	if !hmac.Equal(u.hash.Sum(nil), u.final32) {
 		return ErrAuth
 	}
 	return nil

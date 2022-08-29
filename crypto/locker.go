@@ -14,6 +14,7 @@
 package crypto
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"hash"
@@ -63,7 +64,7 @@ func (l *Locker) Write(b []byte) (int, error) {
 		nonce := rand[saltLen:] // extract nonce from bytes
 		l.cipher, _ = chacha20.NewUnauthenticatedCipher(key, nonce)
 
-		l.hash = sha256.New()
+		l.hash = hmac.New(sha256.New, key)
 	}
 
 	l.hash.Write(b)               // update hash value
